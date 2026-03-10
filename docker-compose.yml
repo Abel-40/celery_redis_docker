@@ -1,0 +1,74 @@
+x-python-base: &python-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: redis_celery_docker:v0
+  env_file:
+    - .env
+  volumes:
+    - .:/backend
+  restart: unless-stopped
+
+services:
+  backend:
+    <<: *python-base
+    container_name: redis_celery_docker
+    ports:
+      - "8080:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  redis:
+    image: redis:7.4-alpine
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli","ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  worker:
+    <<: *python-base
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.worker.celery_app worker --loglevel=info
+
+  celery_beat:
+    <<: *python-base
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.worker.celery_app beat --loglevel=info --schedule /celery_schedule_data/celerybeat-schedule
+    volumes:
+      - .:/backend  # Keeps code in sync
+      - ./celerybeat-data:/celery_schedule_data
+
+  flower:
+    image: mher/flower
+    depends_on:
+      worker:
+        condition: service_started
+    env_file:
+      - .env
+    ports:
+      - "5555:5555"
+    restart: unless-stopped
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    ports:
+      - "5540:5540"
+    volumes:
+      - redis_insight_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  redis_insight_data:
