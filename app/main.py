@@ -8,7 +8,7 @@ from app.worker import send_email
 @asynccontextmanager
 async def lifespan(app:FastAPI):
   try:
-    redis_client = Redis(host=settings.REDIS_HOST,port=settings.REDIS_PORT,decode_responses=True)
+    redis_client = Redis.from_url(settings.REDIS_URL,max_connections=10,decode_responses=True)
     await redis_client.ping()
     app.state.redis = redis_client
     print("redis conntected successfully!!!")
@@ -17,7 +17,9 @@ async def lifespan(app:FastAPI):
     raise RuntimeError("Failed to connect to Redis") from e
 
   yield
-  await app.state.redis.close()
+  if hasattr(app.state, "redis"):
+    await app.state.redis.close()
+    print("Redis connection closed.")
     
 app = FastAPI(lifespan=lifespan)
 
@@ -26,3 +28,9 @@ app = FastAPI(lifespan=lifespan)
 async def register(email:Annotated[str,Body()]):
   send_email.apply_async(args=[email])
   return {"message":f"user signup successfully!!!"}
+
+@app.get("/get/price/")
+async def get_price(request:Request):
+  redis_client = request.app.state.redis
+  price = await redis_client.get("btc:price:latest")
+  return {"bitcoin_price":price}

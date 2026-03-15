@@ -47,7 +47,6 @@ services:
         condition: service_healthy
     command: celery -A app.worker.celery_app beat --loglevel=info --schedule /celery_schedule_data/celerybeat-schedule
     volumes:
-      - .:/backend  # Keeps code in sync
       - ./celerybeat-data:/celery_schedule_data
 
   flower:
